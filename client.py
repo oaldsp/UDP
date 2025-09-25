@@ -38,9 +38,9 @@ def calculate_loss_rate(loss_rate_str):
     
     return loss_rate
 
-def recive_packet(received_segments, client_socket, loss_rate):
+def recive_packet(client_socket, loss_rate):
     received_segments = {}
-    total_segments_expected = -1
+    total_segments_expected = [-1]#Usando lista para permitir modificação dentro de função
     
     while True:
         try:
@@ -51,7 +51,7 @@ def recive_packet(received_segments, client_socket, loss_rate):
                 break
             
             if random.random() > loss_rate:
-                break_and_valid_packet(received_segments, packet)    
+                break_and_valid_packet(total_segments_expected, received_segments, packet)    
             else:
                 print(f"[!] Pacote descartado intencionalmente (simulação de perda).")#{seq_num}
 
@@ -59,7 +59,7 @@ def recive_packet(received_segments, client_socket, loss_rate):
            print("\n[!] Timeout: Nenhum pacote recebido.")
            break
     
-    return total_segments_expected, received_segments
+    return total_segments_expected[0], received_segments
 
 
 def break_and_valid_packet(total_segments_expected, received_segments, packet):
@@ -79,7 +79,7 @@ def break_and_valid_packet(total_segments_expected, received_segments, packet):
             print(f"    -> Recebido segmento {seq_num}", end='\r')
 
         if end_of_file_flag == 1:
-            total_segments_expected = seq_num + 1#Para descobrir o total de segmentos
+            total_segments_expected[0] = seq_num + 1#Para descobrir o total de segmentos
 
 def valid_retransmission(received_segments, missing_seqs, packet):
     header = packet[:HEADER_SIZE]
@@ -96,7 +96,7 @@ def valid_retransmission(received_segments, missing_seqs, packet):
         else:
             print(f"[!] Checksum inválido no segmento retransmitido {seq_num}.")
 
-def found_lost_packets(received_segments):
+def found_lost_packets(total_segments_expected, received_segments):
     last_seq_num_received = max(received_segments.keys()) if received_segments else -1
     if total_segments_expected == -1:#Não recebia a flag de fim
         total_segments_expected = last_seq_num_received + 2 # Estimativa para seperder a flag de fim
@@ -149,14 +149,15 @@ def main():
             request = f"GET /{filename}".encode('utf-8')
             client_socket.sendto(request, server_address)
 
-            total_segments_expected, received_segments = recive_packet(received_segments, client_socket, loss_rate)
+            total_segments_expected, received_segments = recive_packet(client_socket, loss_rate)
             
             if received_segments:
                 if total_segments_expected != -1 and len(received_segments) == total_segments_expected:#Todos os segmentos foram recebidos
                     print("\n[*] Todos os segmentos recebidos corretamente!")
+                    document_ok = True
                 else:
                     print("\n[!] Há segmentos faltando. Solicitando retransmissão...")
-                    missing_seqs = found_lost_packets(received_segments)
+                    missing_seqs = found_lost_packets(total_segments_expected, received_segments)
 
                     if not missing_seqs:
                         print("[!] Nenhum segmento faltante identificado, mas o arquivo pode estar incompleto. Tentando salvar...")
@@ -167,13 +168,14 @@ def main():
                         client_socket.sendto(retransmit_request, server_address)
 
                         retries = 0
-                        while missing_seqs and retries < 3:
+                        while missing_seqs and retries < 5:
                             try:
                                 packet, _ = client_socket.recvfrom(BUFFER_SIZE)                                
                                 valid_retransmission(received_segments, missing_seqs, packet)
                             except socket.timeout:
                                 print("[!] Timeout ao esperar por pacotes retransmitidos. Tentando novamente...")
                                 retries += 1
+                                retransmit_request = f"RETRANSMIT:{','.join(map(str, missing_seqs))}".encode('utf-8')
                                 client_socket.sendto(retransmit_request, server_address)
 
                         if not missing_seqs:

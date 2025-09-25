@@ -49,9 +49,9 @@ def send_file(server_socket, client_address, filepath, file_segments_cache):
         # Monta o cabeçalho
         seq_num_bytes = seq_num.to_bytes(4, 'big')
         checksum = calculate_md5(data)
-        eof_flag = (1).to_bytes(1, 'big') if is_last_segment else (0).to_bytes(1, 'big')
+        end_of_file_flag = (1).to_bytes(1, 'big') if is_last_segment else (0).to_bytes(1, 'big')
         
-        header = seq_num_bytes + checksum + eof_flag
+        header = seq_num_bytes + checksum + end_of_file_flag
         packet = header + data
         
         server_socket.sendto(packet, client_address)
@@ -86,9 +86,9 @@ def retransmit(server_socket, client_address, missing_seq_nums, file_segments_ca
                 # Remonta o pacote e reenvia
                 seq_num_bytes = seq_num.to_bytes(4, 'big')
                 checksum = calculate_md5(data)
-                eof_flag = (1).to_bytes(1, 'big') if is_last_segment else (0).to_bytes(1, 'big')
+                end_of_file_flag = (1).to_bytes(1, 'big') if is_last_segment else (0).to_bytes(1, 'big')
                 
-                header = seq_num_bytes + checksum + eof_flag
+                header = seq_num_bytes + checksum + end_of_file_flag
                 packet = header + data
                 
                 server_socket.sendto(packet, client_address)
